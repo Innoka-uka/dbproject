@@ -1,5 +1,3 @@
-
-#整个文件修改很多
 import pymongo
 
 class Store:
@@ -8,7 +6,7 @@ class Store:
 
     def __init__(self):
         self.client = pymongo.MongoClient('mongodb://localhost:27017')
-        self.database = self.client.bookstore1
+        self.database = self.client.books
         self.init_collections()
 
     def init_collections(self):

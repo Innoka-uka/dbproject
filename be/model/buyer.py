@@ -1,13 +1,11 @@
-
-#带注释的基本都改了 有其他的话我会用#---------标记
-#import sqlite3 as sqlite
+import sqlite3 as sqlite
 import uuid
 import json
 import logging
-import pymongo  #-----------
-import threading  #---------
 from be.model import db_conn
 from be.model import error
+
+import pymongo
 
 
 class Buyer(db_conn.DBConn):
@@ -15,7 +13,7 @@ class Buyer(db_conn.DBConn):
         db_conn.DBConn.__init__(self)
 
     def new_order(
-            self, user_id: str, store_id: str, id_and_count: [(str, int)]
+        self, user_id: str, store_id: str, id_and_count: [(str, int)]
     ) -> (int, str, str):
         order_id = ""
         try:
@@ -25,7 +23,7 @@ class Buyer(db_conn.DBConn):
                 return error.error_non_exist_store_id(store_id) + (order_id,)
             uid = "{}_{}_{}".format(user_id, store_id, str(uuid.uuid1()))
 
-            order_details = [] #----------
+            order_details = []
             
             for book_id, count in id_and_count:
                 book = self.conn["store"].find_one({"store_id": store_id, "book_id": book_id})
@@ -82,7 +80,8 @@ class Buyer(db_conn.DBConn):
             return 530, "{}".format(str(e)), ""
 
         return 200, "ok", order_id
-
+    
+    
     def payment(self, user_id: str, password: str, order_id: str) -> (int, str):
         try:
             conn = self.conn
@@ -131,12 +130,13 @@ class Buyer(db_conn.DBConn):
             conn["order_history"].update_one({"order_id": order_id}, {"$set": {"status": "paid"}})
 
         except pymongo.errors.PyMongoError as e:
-            return 528, str(e)
+                return 528, str(e)
         except BaseException as e:
-            return 530, str(e)
+                return 530, str(e)
 
         return 200, "ok"
-
+    
+    
     def add_funds(self, user_id, password, add_value) -> (int, str):
         try:
             conn = self.conn
@@ -157,7 +157,8 @@ class Buyer(db_conn.DBConn):
             return 530, str(e)
 
         return 200, "ok"
-    
+
+    # 获取历史订单信息-后40
     def get_order_history(self, user_id: str) -> (int, str, [dict]):
         try:
             conn = self.conn
@@ -209,7 +210,7 @@ class Buyer(db_conn.DBConn):
 
         return 200, "ok", order_list
 
-
+    # 取消订单-后40
     def cancel_order(self, user_id: str, order_id: str) -> (int, str):
         try:
             order = self.conn["new_order"].find_one({"order_id": order_id})
@@ -241,6 +242,7 @@ class Buyer(db_conn.DBConn):
 
         return 200, "ok"
 
+    # 后40 - 收货
     def receive_order(self, user_id: str, order_id: str) -> (int, str):
         try:
             conn = self.conn
@@ -270,31 +272,24 @@ class Buyer(db_conn.DBConn):
 
         return 200, "ok"
     
-#   def show_collection(self):
-
-#   def collect_book(self, book_id, store_id):
-
-#   def uncollect_book(self, book_id, store_id):
-
-
-#我在做一个书店网站的项目。我有一个Mongodb数据库，里面有三个collection分别是user、store和books，里面分别放着顾客、网店和书籍的信息。我现在想要增加一个收藏功能：通过在每个用户的数据里面存放一个（book_id, sotre_id）的数组来表示这个用户收藏了某个网店中的某个书籍。收藏功能提供三个接口：
-
+    # 创新 - 获取收藏列表
     def get_collection(self, user_id):
         try:
             user = self.conn["user"].find_one({'user_id': user_id})
             if not user:
                 return error.error_non_exist_user_id(user_id)
+
+        
+            result = user.get('collections', [])
+            if not result:
+                return error.no_collection
         except pymongo.errors.PyMongoError as e:
             return 528, str(e)
         except BaseException as e:
             return 530, "{}".format(str(e))
-        
-        result = user.get('collections', [])
-        if not result:
-            return 200, "empty"
-        else:
-            return 200, "ok"
+        return 200, "ok"
 
+    # 创新 - 收藏书籍
     def collect_book(self, user_id, book_id):
         try:
             user = self.conn["user"].find_one({'user_id': user_id})
@@ -304,16 +299,16 @@ class Buyer(db_conn.DBConn):
                 {'user_id': user_id},
                 {'$addToSet': {'collections': book_id}}
             )
+            if result.modified_count == 0:
+                return error.error_collect_fail(book_id)
         except pymongo.errors.PyMongoError as e:
             return 528, str(e)
         except BaseException as e:
             return 530, "{}".format(str(e))
         
-        if result.modified_count == 0:
-            return 200, "re-collect"
-        else:
-            return 200, "ok"
+        return 200, "ok"
 
+    # 创新 - 取消收藏
     def uncollect_book(self, user_id, book_id):
         try:
             user = self.conn["user"].find_one({'user_id': user_id})
@@ -323,12 +318,11 @@ class Buyer(db_conn.DBConn):
                 {'user_id': user_id},
                 {'$pull': {'collections': book_id}}
             )
+            if result.modified_count == 0:
+                return error.error_collect_fail(book_id)
         except pymongo.errors.PyMongoError as e:
             return 528, str(e)
         except BaseException as e:
             return 530, "{}".format(str(e))
         
-        if result.modified_count == 0:
-            return 200, "not-collected-book"
-        else:
-            return 200, "ok"
+        return 200, "ok"

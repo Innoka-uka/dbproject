@@ -1,12 +1,14 @@
-#import sqlite3 as sqlite #--------
+import sqlite3 as sqlite
 from be.model import error
 from be.model import db_conn
 import pymongo
 
+
 class Seller(db_conn.DBConn):
     def __init__(self):
         db_conn.DBConn.__init__(self)
-
+        
+    # 新增书籍
     def add_book(
         self,
         user_id: str,
@@ -15,9 +17,13 @@ class Seller(db_conn.DBConn):
         book_json_str: str,
         stock_level: int,
     ):
-        try: #基本改了-----------
-            if not self.user_id_exist(user_id) or not self.store_id_exist(store_id) or self.book_id_exist(store_id, book_id):
-                return 400, "Invalid request parameters"  
+        try:
+            if not self.user_id_exist(user_id):
+                return error.error_non_exist_user_id(user_id)
+            if not self.store_id_exist(store_id):
+                return error.error_non_exist_store_id(store_id)
+            if self.book_id_exist(store_id, book_id):
+                return error.error_exist_book_id(book_id)
 
             book_doc = {
                 'store_id': store_id,
@@ -30,17 +36,17 @@ class Seller(db_conn.DBConn):
             return 500, str(e)  
         return 200, "ok"  
 
-
+    # 增加库存 - 前40
     def add_stock_level(
         self, user_id: str, store_id: str, book_id: str, add_stock_level: int
     ):
-        try:#改了一些语义不变 返回数字不同
-            if not all([
-                self.user_id_exist(user_id),
-                self.store_id_exist(store_id),
-                self.book_id_exist(store_id, book_id)
-            ]):
-                return 400, "Invalid request parameters"  
+        try:
+            if not self.user_id_exist(user_id):
+                return error.error_non_exist_user_id(user_id)
+            if not self.store_id_exist(store_id):
+                return error.error_non_exist_store_id(store_id)
+            if not self.book_id_exist(store_id, book_id):
+                return error.error_non_exist_book_id(book_id)
 
             self.conn['store'].update_one(
                 {'store_id': store_id, 'book_id': book_id},
@@ -50,14 +56,13 @@ class Seller(db_conn.DBConn):
             return 500, str(e)  
         return 200, "ok"  
 
-
-    def create_store(self, user_id: str, store_id: str) -> (int, str):  #也是改变一些代码和改变返回值
+    # 创建店铺
+    def create_store(self, user_id: str, store_id: str) -> (int, str):
         try:
             if not self.user_id_exist(user_id):
-                return 400, "User does not exist"
-
+                return error.error_non_exist_user_id(user_id)
             if self.store_id_exist(store_id):
-                return 400, "Store ID already exists"
+                return error.error_exist_store_id(store_id)
 
             user_store_doc = {
                 'store_id': store_id,
@@ -68,19 +73,20 @@ class Seller(db_conn.DBConn):
             return 500, str(e)  
         return 200, "Store created successfully" 
 
-
-    def ship_order(self, user_id: str, store_id: str, order_id: str) -> (int, str): #新加的函数
+    # 后60% 发货
+    def ship_order(self, user_id: str, store_id: str, order_id: str) -> (int, str):
         try:
             if not self.user_id_exist(user_id):
-                return 400, "User does not exist"
+                return error.error_non_exist_user_id(user_id)
             if not self.store_id_exist(store_id):
-                return 400, "Store does not exist"
+                return error.error_exist_store_id(store_id)
 
             order = self.conn['order_history'].find_one({'order_id': order_id})
             if not order:
-                return 400, "Invalid order ID"
+                return error.error_invalid_order_id(order_id)
+
             if order['status'] != 'paid':
-                return 400, "Order is not paid"
+                return error.error_not_paid(order_id)
 
             self.conn['order_history'].update_one(
                 {'order_id': order_id},

@@ -1,7 +1,7 @@
 import jwt
 import time
 import logging
-#import sqlite3 as sqlite
+import sqlite3 as sqlite
 from be.model import error
 from be.model import db_conn
 import pymongo
@@ -20,7 +20,7 @@ def jwt_encode(user_id: str, terminal: str) -> str:
         key=user_id,
         algorithm="HS256",
     )
-    return encoded.encode("utf-8").decode("utf-8")
+    return encoded.decode("utf-8")
 
 
 # decode a JWT to a json string like:
@@ -34,10 +34,6 @@ def jwt_decode(encoded_token, user_id: str) -> str:
     return decoded
 
 
-# def search_global(title='', content='', tag=''):        #新加的
-#     return 200, "ok"
-
-
 class User(db_conn.DBConn):
     token_lifetime: int = 3600  # 3600 second
 
@@ -48,22 +44,18 @@ class User(db_conn.DBConn):
         try:
             if db_token != token:
                 return False
-
             jwt_text = jwt_decode(encoded_token=token, user_id=user_id)
-            ts = jwt_text.get("timestamp")
-            if ts is None:
-                return False
-            
-            now = time.time()
-            if now - ts <= self.token_lifetime:
-                return True
+            ts = jwt_text["timestamp"]
+            if ts is not None:
+                now = time.time()
+                if self.token_lifetime > now - ts >= 0:
+                    return True
         except jwt.exceptions.InvalidSignatureError as e:
             logging.error(str(e))
-
-        return False
-
-
-    def register(self, user_id: str, password: str):     #修改了一些-------
+            return False
+        
+    # 前40 -注册
+    def register(self, user_id: str, password: str):
         try:
             # Check if user with the same user_id already exists
             existing_user = self.conn['user'].find_one({"user_id": user_id})
@@ -72,38 +64,41 @@ class User(db_conn.DBConn):
 
             terminal = "terminal_{}".format(str(time.time()))
             token = jwt_encode(user_id, terminal)
-            user_doc = {
+            user_data = {
                 "user_id": user_id,
                 "password": password,
                 "balance": 0,
                 "token": token,
                 "terminal": terminal
             }
-            self.conn['user'].insert_one(user_doc)
+            self.conn['user'].insert_one(user_data)
             return 200, "ok"
         except pymongo.errors.PyMongoError as e:
             return 528, str(e)
 
-    def check_token(self, user_id: str, token: str) -> (int, str):#修改了一些-------
-        user = self.conn['user'].find_one({'user_id': user_id})
-        if user is None:
+    # 前40 -登录1
+    def check_token(self, user_id: str, token: str) -> (int, str):
+        users = self.conn['user'].find_one({'user_id': user_id})
+        if users is None:
             return error.error_authorization_fail()
 
-        db_token = user.get('token', '')
+        db_token = users.get('token', '')
         is_token_valid = self.__check_token(user_id, db_token, token)
         if not is_token_valid:
             return error.error_authorization_fail()
 
         return 200, "ok"
 
-
-    def check_password(self, user_id: str, password: str) -> (int, str):  #修改了一些
+    # 前40 - 登录2
+    def check_password(self, user_id: str, password: str) -> (int, str):
         try:
-            user = self.conn['user'].find_one({'user_id': user_id}, {'_id': 0, 'password': 1})
+            # 查询用户是否存在
+            user = self.user_collection.find_one({"user_id": user_id}, {"password": 1})
             if user is None:
                 return error.error_authorization_fail()
 
-            if user.get('password') != password:
+            # 检查密码是否匹配
+            if password != user.get("password"):
                 return error.error_authorization_fail()
 
         except pymongo.errors.PyMongoError as e:
@@ -111,41 +106,8 @@ class User(db_conn.DBConn):
 
         return 200, "ok"
 
-    # def login(self, user_id: str, password: str, terminal: str) -> (int, str, str):
-    #     token = ""
-    #     try:
-    #         code, message = self.check_password(user_id, password)
-    #         if code != 200:
-    #             return code, message, ""
-
-    #         token = jwt_encode(user_id, terminal)
-    #         result = self.conn['user'].update_one({'user_id': user_id}, {'$set': {'token': token, 'terminal': terminal}})
-    #         if result.matched_count == 0:
-    #             return error.error_authorization_fail() + ("",)
-    #     except pymongo.errors.PyMongoError as e:
-    #         return 528, str(e), ""
-    #     except BaseException as e:
-    #         return 530, "{}".format(str(e)), ""
-    #     return 200, "ok", token
-
-    # def logout(self, user_id: str, token: str) -> bool:
-    #     try:
-    #         code, message = self.check_token(user_id, token)
-    #         if code != 200:
-    #             return code, message
-
-    #         terminal = "terminal_{}".format(str(time.time()))
-    #         dummy_token = jwt_encode(user_id, terminal)
-
-    #         result = self.conn['user'].update_one({'user_id': user_id}, {'$set': {'token': dummy_token, 'terminal': terminal}})
-    #         if result.matched_count == 0:
-    #             return error.error_authorization_fail()
-    #     except pymongo.errors.PyMongoError as e:
-    #         return 528, str(e)
-    #     except BaseException as e:
-    #         return 530, "{}".format(str(e))
-    #     return 200, "ok"
-    def login(self, user_id: str, password: str, terminal: str) -> (int, str, str):  #其实改动并不多 不知道为什么要全注释
+    # 前40 - 登录
+    def login(self, user_id: str, password: str, terminal: str) -> (int, str, str):
         try:
             code, message = self.check_password(user_id, password)
             if code != 200:
@@ -164,6 +126,7 @@ class User(db_conn.DBConn):
             return 530, str(e), ""
         return 200, "ok", token
 
+    # 前40 - 登出
     def logout(self, user_id: str, token: str) -> bool:
         try:
             code, message = self.check_token(user_id, token)
@@ -185,8 +148,8 @@ class User(db_conn.DBConn):
             return 530, str(e)
         return 200, "ok"
 
-
-    def unregister(self, user_id: str, password: str) -> (int, str):  #同上
+    # 前40 - 注销
+    def unregister(self, user_id: str, password: str) -> (int, str):
         try:
             code, message = self.check_password(user_id, password)
             if code != 200:
@@ -201,33 +164,8 @@ class User(db_conn.DBConn):
             return 530, str(e)
         return 200, "ok"
 
-
-    # def change_password(
-    #     self, user_id: str, old_password: str, new_password: str
-    # ) -> bool:
-    #     try:
-    #         code, message = self.check_password(user_id, old_password)
-    #         if code != 200:
-    #             return code, message
-
-    #         terminal = "terminal_{}".format(str(time.time()))
-    #         token = jwt_encode(user_id, terminal)
-    #         self.conn['user'].update_one(
-    #             {'user_id': user_id},
-    #             {'$set': {
-    #                 'password': new_password,
-    #                 'token': token,
-    #                 'terminal': terminal,
-    #             }},
-    #         )
-    #     except pymongo.errors.PyMongoError as e:
-    #         return 528, str(e)
-    #     except BaseException as e:
-    #         return 530, "{}".format(str(e))
-    #     return 200, "ok"
-    def change_password(      #同上
-    self, user_id: str, old_password: str, new_password: str
-) -> (int, str):
+    # 前40 - 修改密码
+    def change_password(self, user_id: str, old_password: str, new_password: str) -> (int, str):
         try:
             code, message = self.check_password(user_id, old_password)
             if code != 200:
@@ -249,8 +187,8 @@ class User(db_conn.DBConn):
             return 530, str(e)
         return 200, "ok"
 
-
-    def search_book(self, title='', content='', tag='', store_id=''):         #新增的函数------------
+    # 后40-搜索图书
+    def search_book(self, title='', content='', tag='', store_id=''):
         try:
             query = {}
 
@@ -271,7 +209,7 @@ class User(db_conn.DBConn):
 
             results = list(self.conn["books"].find(query))
             if not results:
-                return 529, "No matching books found."
+                return error.error_no_books_found
             else:
                 return 200, "ok"
         except pymongo.errors.PyMongoError as e:
@@ -279,7 +217,8 @@ class User(db_conn.DBConn):
         except Exception as e:
             return 530, "{}".format(str(e))
 
-    def collect_book(self, user_id, book_id):  #也是新增的而且后面两个也是-------------
+    # 创新- 收藏书籍
+    def collect_book(self, user_id, book_id):
         try:
             # Check if the user exists in the collection
             existing_user = self.conn['user'].find_one({"_id": user_id})
@@ -299,6 +238,7 @@ class User(db_conn.DBConn):
         except pymongo.errors.PyMongoError as e:
             return 528, str(e)
 
+    # 创新- 取消收藏书籍
     def uncollect_book(self, user_id, book_id, store_id):
         try:
             # Check if the user exists in the collection
@@ -314,7 +254,9 @@ class User(db_conn.DBConn):
             return 200, "ok"
         except pymongo.errors.PyMongoError as e:
             return 528, str(e)
-
+        
+        
+    # 创新- 获得收藏单
     def get_collection(self, user_id):
         try:
             # Check if the user exists in the collection
@@ -328,5 +270,3 @@ class User(db_conn.DBConn):
         except pymongo.errors.PyMongoError as e:
             return 528, str(e)
 
-
-# F

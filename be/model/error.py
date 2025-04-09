@@ -1,6 +1,3 @@
-#最后一行被注释，其他一样
-
-
 error_code = {
     401: "authorization fail.",
     511: "non exist user id {}",
@@ -14,9 +11,9 @@ error_code = {
     519: "not sufficient funds, order id {}",
     520: "not shipped, order id {}",
     521: "not paid, order id {}",
-    522: "",
-    523: "",
-    524: "",
+    522: "no books found",
+    523: "no collection found",
+    524: "collect fail book id {}",
     525: "",
     526: "",
     527: "",
@@ -60,6 +57,7 @@ def error_not_sufficient_funds(order_id):
     return 519, error_code[518].format(order_id)
 
 
+# 新增
 def error_not_shipped(order_id):
     return 520, error_code[520].format(order_id)
 
@@ -67,10 +65,19 @@ def error_not_shipped(order_id):
 def error_not_paid(order_id):
     return 521, error_code[521].format(order_id)
 
+def error_no_books_found():
+    return 522, error_code[522]
+
+def error_no_collection():
+    return 523, error_code[523]
+
+def error_collect_fail(book_id):
+    return 524, error_code[524].format(book_id)
 
 def error_authorization_fail():
     return 401, error_code[401]
 
 
-# def error_and_message(code, message):
-#     return code, message
+def error_and_message(code, message):
+    return code, message
+
